@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Walkie-talkie</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f4f6;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .chat-container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 2vh;
+        }
+
+        .header {
+            margin-bottom: 20px;
+        }
+
+        #keyInput {
+            width: 100%;
+            /* margin: 0 auto; */
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .message-input-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        #messages {
+            min-height: 50vh;
+            max-height: 50vh;
+            list-style: none;
+            padding: 2vh;
+            margin-top: 30px;
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f3f3eb;
+            border-radius: 2vh;
+        }
+
+        #messages li {
+            background: #f1f5f9;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        
+        <div class="header">
+            <input id="keyInput" type="text" placeholder="Enter secret passkey">
+        </div>
+
+        <ul id="messages"></ul>
+
+        <div class="message-input-group">
+            <input id="messageInput" type="text" placeholder="Enter text here">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+
+
+    </div>
+    
+    <script>
+        const socket = new WebSocket(`ws://${location.host}`);
+
+        if (window.crypto && window.crypto.subtle) {
+            console.log("Web Crypto API поддерживается");
+        } else {
+            console.error("Web Crypto API не поддерживается этим браузером");
+        }
+
+        socket.onmessage = async function(event) {
+            try{
+                const messages = document.getElementById('messages');
+                const li = document.createElement('li');
+                if (typeof event.data === 'string') {
+                    const json = (await encryptDecrypt(event.data, 'decrypt'));
+                    console.log(json);
+                    if (document.getElementById('keyInput').value == json.passkey) {
+                        li.textContent = json.message;
+                        messages.appendChild(li);
+                        messages.scrollTop = messages.scrollHeight;
+                    }
+                } else if (event.data instanceof Blob) {
+                    event.data.text().then(async (text) => {
+                        try{
+                            const json = JSON.parse(await encryptDecrypt(text, 'decrypt'));
+                            if (document.getElementById('keyInput').value == json.passkey) {
+                                li.textContent = json.message;
+                                messages.appendChild(li);
+                                messages.scrollTop = messages.scrollHeight;
+                            }
+                        } catch(e) {}
+                        
+                    });
+                }
+            } catch(e){}           
+            
+        };
+
+        function encryptDecrypt(message, mode = 'encrypt') {
+            const passkey = document.getElementById('keyInput').value;
+
+
+            if(mode === 'encrypt') {
+                const encrypted = CryptoJS.AES.encrypt(message, passkey).toString();
+                // console.log(encrypted);
+                return encrypted;
+
+            } else if(mode === 'decrypt') {
+                const bytes = CryptoJS.AES.decrypt(message, passkey);
+                const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+                // console.log(decrypted);
+                return decrypted;
+            } else {
+                console.error("Wrong mode specified in encryptDecrypt");
+            }
+
+
+        }
+
+        async function sendMessage() {
+            const passkey = document.getElementById('keyInput');
+            const input = document.getElementById('messageInput');
+            const message = {
+                passkey: passkey.value,
+                message: input.value,
+            }
+            socket.send(encryptDecrypt(JSON.stringify(message, 'encrypt')));
+            input.value = '';
+
+        }
+    </script>
+</body>
+</html>
